@@ -48,54 +48,34 @@ APP_ICON_FILE = "app_icon.ico" # <--- CAMBIA ESTO AL NOMBRE DE TU ICONO
 
 def is_admin():
     """ Verifica si el script se está ejecutando con privilegios de administrador en Windows """
-    if platform.system() != "Windows":
-        return False # Solo relevante en Windows
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
-        return False
+    if platform.system() != "Windows": return False
+    try: return ctypes.windll.shell32.IsUserAnAdmin()
+    except: return False
 
 def run_as_admin():
     """ Relanza el script actual con privilegios de administrador en Windows """
-    if platform.system() != "Windows":
-        print("Admin relaunch is only supported on Windows.")
-        return False
-
-    lpVerb = "runas"
-    lpFile = sys.executable
-    # Usar sys.argv[0] para el script principal, y el resto como parámetros
-    # Esto puede ser más robusto, especialmente si el script se llama con argumentos
-    # lpParameters = " ".join(sys.argv[1:]) # Pasar solo los argumentos, no el nombre del script
-    # O pasar todo como antes si funciona bien
-    lpParameters = " ".join(sys.argv)
-
-    lpDirectory = os.getcwd()
-    nShowCmd = 1 # SW_SHOWNORMAL
-
+    if platform.system() != "Windows": print("Admin relaunch only on Windows."); return False
+    lpVerb = "runas"; lpFile = sys.executable; lpParameters = " ".join(sys.argv)
+    lpDirectory = os.getcwd(); nShowCmd = 1
     try:
-        print(f"Attempting to relaunch as admin: {lpFile} {lpParameters}")
+        print(f"Attempting relaunch: {lpFile} {lpParameters}")
         result = ctypes.windll.shell32.ShellExecuteW(None, lpVerb, lpFile, lpParameters, lpDirectory, nShowCmd)
         print(f"ShellExecuteW result: {result}")
         return result > 32
     except Exception as e:
-        print(f"Error trying to relaunch as admin: {e}")
-        # Usar tk messagebox si está disponible
-        try:
-            messagebox.showerror("Relaunch Error", f"Could not relaunch as administrator:\n{e}")
-        except NameError: # Si messagebox no fue importado
-            pass
+        print(f"Relaunch error: {e}")
+        try: messagebox.showerror("Relaunch Error", f"Could not relaunch as admin:\n{e}")
+        except NameError: pass
         return False
 
 
-# --- Funciones de Conversión y Escaneo (Sin cambios respecto a la versión anterior) ---
+# --- Funciones de Conversión y Escaneo (Sin cambios) ---
 def convert_to_png(file_path, output_path_png, delete_original=False, app_instance=None):
     """ Convierte imagen, loguea a app_instance.log """
     log_func = app_instance.log if app_instance else print
     try:
         os.makedirs(os.path.dirname(output_path_png), exist_ok=True)
-        if os.path.exists(output_path_png):
-            # log_func(f"--- Skipped (exists): {os.path.basename(output_path_png)}", 'SKIP')
-            return 'skipped'
+        if os.path.exists(output_path_png): return 'skipped'
         with Image.open(file_path) as img:
             img_to_save = img
             if img.mode in ('RGBA', 'LA') or (img.mode == 'P' and 'transparency' in img.info):
@@ -103,56 +83,35 @@ def convert_to_png(file_path, output_path_png, delete_original=False, app_instan
                  try:
                      if img.mode == 'RGBA': mask = img.split()[3]
                      elif img.mode == 'LA': mask = img.split()[1]
-                     elif 'transparency' in img.info:
-                         img_rgba = img.convert('RGBA'); mask = img_rgba.split()[3]
+                     elif 'transparency' in img.info: img_rgba = img.convert('RGBA'); mask = img_rgba.split()[3]
                      else: mask = None
                      if mask: background.paste(img, (0, 0), mask); img_to_save = background
                      else: img_to_save = img.convert('RGB')
                  except Exception as paste_err:
                       log_func(f"*** Warn: Transparency issue {os.path.basename(file_path)}: {paste_err}", 'WARN')
                       img_to_save = img.convert('RGB')
-            elif img.mode != 'RGB':
-                 img_to_save = img.convert('RGB')
-
+            elif img.mode != 'RGB': img_to_save = img.convert('RGB')
             img_to_save.save(output_path_png, "PNG")
-            # log_func(f"-> Converted: {os.path.basename(file_path)} >> {os.path.basename(output_path_png)}", 'SUCCESS')
             if delete_original:
-                try:
-                    os.remove(file_path)
-                    # log_func(f"--- Original deleted: {os.path.basename(file_path)}", 'WARN')
-                except OSError as e:
-                    log_func(f"*** Error deleting {os.path.basename(file_path)}: {e}", 'ERROR')
+                try: os.remove(file_path)
+                except OSError as e: log_func(f"*** Error deleting {os.path.basename(file_path)}: {e}", 'ERROR')
             return 'converted'
-    except Image.UnidentifiedImageError:
-        log_func(f"*** Error: Unidentified format: {os.path.basename(file_path)}", 'ERROR')
-        return 'error'
-    except PermissionError:
-        log_func(f"*** Error: Permission denied saving {os.path.basename(output_path_png)}", 'ERROR')
-        return 'error'
-    except Exception as e:
-        log_func(f"*** Error converting {os.path.basename(file_path)}: {e}", 'ERROR')
-        return 'error'
+    except Image.UnidentifiedImageError: log_func(f"*** Error: Unidentified format: {os.path.basename(file_path)}", 'ERROR'); return 'error'
+    except PermissionError: log_func(f"*** Error: Permission denied saving {os.path.basename(output_path_png)}", 'ERROR'); return 'error'
+    except Exception as e: log_func(f"*** Error converting {os.path.basename(file_path)}: {e}", 'ERROR'); return 'error'
 
 def scan_and_convert(root_directory, output_base_folder, delete_originals=False, app_instance=None):
     """ Escanea y convierte, actualizando UI con más detalle """
-    log_func = app_instance.log
-    update_progress = app_instance.update_progress_and_label
-    update_status = app_instance.update_status_label
-    update_ui = app_instance.after
-
+    log_func = app_instance.log; update_progress = app_instance.update_progress_and_label
+    update_status = app_instance.update_status_label; update_ui = app_instance.after
     log_func(f"\nStarting scan in: {root_directory}", 'INFO')
     log_func(f"Output folder: {output_base_folder}", 'INFO')
     if delete_originals: log_func("Delete originals option is ON.", 'WARN')
-
     counter = {'converted': 0, 'skipped': 0, 'error': 0, 'processed': 0}
     extensions_to_find = (".webp", ".jfif", ".jif"); files_to_process = []
     permission_errors_count = 0
-
-    # --- Primera pasada: Contar archivos y carpetas ---
-    update_status("Counting files...")
-    update_ui(1, lambda: None) # Forzar update inicial
-    processed_folders = 0
-    start_time_count = time.time()
+    update_status("Counting files..."); update_ui(1, lambda: None)
+    processed_folders = 0; start_time_count = time.time()
     try:
         def onerror_handler(err):
             nonlocal permission_errors_count
@@ -161,65 +120,34 @@ def scan_and_convert(root_directory, output_base_folder, delete_originals=False,
                 if permission_errors_count <= 10: log_func(f"--- Permission error accessing: {os.path.basename(err.filename)}", 'SKIP')
                 elif permission_errors_count == 11: log_func("--- (Further permission errors omitted)", 'SKIP')
             else: log_func(f"*** OS Walk Error: {err} ***", 'ERROR')
-
         for current_folder, _, files in os.walk(root_directory, topdown=True, onerror=onerror_handler):
-             if app_instance and app_instance.stop_scan_flag.is_set():
-                 log_func("Scan stopped during counting.", "WARN"); return
+             if app_instance and app_instance.stop_scan_flag.is_set(): log_func("Scan stopped during counting.", "WARN"); return
              processed_folders += 1
-             if processed_folders % 100 == 0:
-                 update_status(f"Counting... (Folder: ...{os.path.basename(current_folder)})")
-                 update_ui(1, lambda: None) # Permitir que la UI respire
-
+             if processed_folders % 100 == 0: update_status(f"Counting... (Folder: ...{os.path.basename(current_folder)})"); update_ui(1, lambda: None)
              for filename in files:
-                  if filename.lower().endswith(extensions_to_find):
-                       files_to_process.append(os.path.join(current_folder, filename))
-
+                  if filename.lower().endswith(extensions_to_find): files_to_process.append(os.path.join(current_folder, filename))
         if permission_errors_count > 0: log_func(f"--- Skipped {permission_errors_count} directories due to permissions.", 'SKIP')
-
-    except Exception as e:
-        log_func(f"\n*** Error counting files: {e} ***", 'ERROR')
-        app_instance.show_message("Scan Error", f"Error counting files:\n{e}", error=True); return
+    except Exception as e: log_func(f"\n*** Error counting files: {e} ***", 'ERROR'); app_instance.show_message("Scan Error", f"Error counting files:\n{e}", error=True); return
     finally: update_status("")
-
-    count_time = time.time() - start_time_count
-    total_files = len(files_to_process)
+    count_time = time.time() - start_time_count; total_files = len(files_to_process)
     log_func(f"Count finished in {count_time:.2f}s. Found {total_files} files.", 'INFO')
     update_progress(0, total_files); update_ui(1, lambda: None)
-
-    if total_files == 0:
-         log_func("No matching files found.", 'INFO')
-         app_instance.show_message("Scan Complete", "No matching files found.", info=True); return
-
-    # --- Segunda pasada: Procesar archivos ---
-    update_status("Converting images...")
-    start_time_convert = time.time()
+    if total_files == 0: log_func("No matching files found.", 'INFO'); app_instance.show_message("Scan Complete", "No matching files found.", info=True); return
+    update_status("Converting images..."); start_time_convert = time.time()
     try:
         for i, original_full_path in enumerate(files_to_process):
-             if app_instance and app_instance.stop_scan_flag.is_set():
-                 log_func("Scan stopped during conversion.", "WARN"); break
-
-             counter['processed'] = i + 1
-             update_progress(counter['processed'], total_files)
+             if app_instance and app_instance.stop_scan_flag.is_set(): log_func("Scan stopped during conversion.", "WARN"); break
+             counter['processed'] = i + 1; update_progress(counter['processed'], total_files)
              if counter['processed'] % 20 == 0 or counter['processed'] == total_files: update_ui(1, lambda: None)
-
-             result = convert_to_png(original_full_path,
-                                     os.path.join(output_base_folder, os.path.basename(original_full_path).rsplit('.', 1)[0] + ".png"),
-                                     delete_originals, app_instance=app_instance)
+             result = convert_to_png(original_full_path, os.path.join(output_base_folder, os.path.basename(original_full_path).rsplit('.', 1)[0] + ".png"), delete_originals, app_instance=app_instance)
              if result in counter: counter[result] += 1
-    except Exception as e:
-         log_func(f"\n*** Error during conversion: {e} ***", 'ERROR')
-         log_func("*** Scan may be incomplete. ***", 'ERROR')
-         app_instance.show_message("Scan Error", f"Error during conversion:\n{e}", error=True)
+    except Exception as e: log_func(f"\n*** Error during conversion: {e} ***", 'ERROR'); log_func("*** Scan may be incomplete. ***", 'ERROR'); app_instance.show_message("Scan Error", f"Error during conversion:\n{e}", error=True)
     finally: update_status("")
-
-    convert_time = time.time() - start_time_convert
-    update_ui(1, lambda: None)
-    # --- Resumen Final ---
+    convert_time = time.time() - start_time_convert; update_ui(1, lambda: None)
     if not (app_instance and app_instance.stop_scan_flag.is_set()):
         summary = (f"\n--- Scan Finished ({convert_time:.2f}s) ---\n"
                    f"Processed: {counter['processed']} | Converted: {counter['converted']} | Skipped: {counter['skipped']} | Errors: {counter['error']}\n")
-        summary += f"Output: {output_base_folder}\n"
-        summary += "Originals " + ("deleted." if delete_originals else "kept.")
+        summary += f"Output: {output_base_folder}\n"; summary += "Originals " + ("deleted." if delete_originals else "kept.")
         log_func(summary, 'INFO'); app_instance.show_message("Scan Complete", summary.strip(), info=True)
 
 
@@ -249,27 +177,22 @@ class ImageConverterApp(ctk.CTk):
         self.scan_option = tk.StringVar(value="current")
         self.specific_dir = tk.StringVar(value="")
         self.delete_originals_var = tk.BooleanVar(value=False)
-        try:
-            if getattr(sys, 'frozen', False): self.script_dir = os.path.dirname(sys.executable)
-            else: self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        except NameError: self.script_dir = os.getcwd()
+        self.script_dir = self.get_script_directory() # Usar función auxiliar
         self.output_folder_path = os.path.join(self.script_dir, OUTPUT_FOLDER_NAME)
         self.is_currently_admin = is_admin()
 
         # --- Establecer Icono de Ventana ---
-        self.setup_window_icon() # Llamar a la nueva función
+        self.setup_window_icon()
 
         # --- Cargar Iconos para Botones ---
         self.icons = {}
-        self.load_button_icons() # Llamar a la nueva función
+        self.load_button_icons()
 
         # --- Layout Principal (Grid) ---
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=0) # Frame opciones
-        self.grid_rowconfigure(1, weight=0) # Frame delete y output
-        self.grid_rowconfigure(2, weight=1) # Frame log (expandir)
-        self.grid_rowconfigure(3, weight=0) # Frame acciones (botón/progreso/status)
-        self.grid_rowconfigure(4, weight=0) # Frame admin status (nueva fila)
+        self.grid_rowconfigure(0, weight=0); self.grid_rowconfigure(1, weight=0)
+        self.grid_rowconfigure(2, weight=1); self.grid_rowconfigure(3, weight=0)
+        self.grid_rowconfigure(4, weight=0)
 
         # --- Frame Opciones ---
         options_frame = ctk.CTkFrame(self, corner_radius=10)
@@ -376,18 +299,42 @@ class ImageConverterApp(ctk.CTk):
 
     # --- Métodos de la GUI (adaptados a CTk y UX) ---
 
+    def get_script_directory(self):
+        """ Determina el directorio base del script o ejecutable """
+        if getattr(sys, 'frozen', False):
+            # Si está congelado (empaquetado por PyInstaller)
+            return os.path.dirname(sys.executable)
+        else:
+            # Si se ejecuta como script .py
+            return os.path.dirname(os.path.abspath(__file__))
+
+    def resource_path(self, relative_path):
+        """ Obtiene la ruta absoluta a un recurso, funciona para dev y para PyInstaller """
+        try:
+            # PyInstaller crea una carpeta temporal y guarda la ruta en _MEIPASS
+            base_path = sys._MEIPASS
+        except Exception:
+            # Si no está congelado, usar la ruta del script
+            base_path = self.script_dir # Usar el atributo ya calculado
+
+        return os.path.join(base_path, relative_path)
+
+
     def setup_window_icon(self):
         """ Establece el icono de la ventana principal si el archivo .ico existe """
-        icon_path = os.path.join(self.script_dir, APP_ICON_FILE)
-        if os.path.exists(icon_path):
-            try:
+        try:
+            # Usar resource_path para encontrar el icono
+            icon_path = self.resource_path(APP_ICON_FILE)
+            if os.path.exists(icon_path):
                 # self.iconbitmap() es un método de la ventana raíz (CTk)
                 self.iconbitmap(icon_path)
                 print(f"Window icon set from: {icon_path}")
-            except Exception as e:
-                print(f"Warning: Could not set window icon from {icon_path}: {e}")
-        else:
-            print(f"Warning: Window icon file not found: {icon_path}")
+            else:
+                print(f"Warning: Window icon file not found at expected path: {icon_path}")
+                print(f"         (Looking relative to base path: {self.script_dir if '_MEIPASS' not in sys.__dict__ else sys._MEIPASS})")
+        except Exception as e:
+            print(f"Warning: Could not set window icon: {e}")
+
 
     def load_button_icons(self):
         """ Carga los iconos para los botones """
@@ -395,13 +342,22 @@ class ImageConverterApp(ctk.CTk):
         icon_files = {"browse": "browse_icon.png", "start": "start_icon.png", "stop": "stop_icon.png", "shield": "shield_icon.png"}
         for name, filename in icon_files.items():
             try:
-                icon_path = os.path.join(self.script_dir, filename)
+                # Usar resource_path para encontrar los iconos PNG
+                icon_path = self.resource_path(filename)
                 if os.path.exists(icon_path):
-                    img = Image.open(icon_path).resize(icon_size)
-                    self.icons[name] = ImageTk.PhotoImage(img)
-                else: print(f"Warning: Button icon file not found: {filename}")
+                    # Usar CTkImage para mejor escalado y soporte de temas (opcional)
+                    # img = ctk.CTkImage(light_image=Image.open(icon_path),
+                    #                    dark_image=Image.open(icon_path), # Mismo icono para ambos modos
+                    #                    size=icon_size)
+                    # self.icons[name] = img
+                    # O seguir con ImageTk si CTkImage da problemas
+                    img_pil = Image.open(icon_path).resize(icon_size)
+                    self.icons[name] = ImageTk.PhotoImage(img_pil)
+
+                else: print(f"Warning: Button icon file not found: {filename} at {icon_path}")
             except Exception as e: print(f"Warning: Could not load button icon {filename}: {e}")
 
+    # ... (resto de métodos sin cambios: center_window, log, _insert_log, etc.) ...
     def center_window(self, width=800, height=650):
         """ Centra la ventana en la pantalla """
         try:
